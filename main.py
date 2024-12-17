@@ -21,6 +21,7 @@ user_states = {}
 class WeatherState(StatesGroup):
     start_point = State()
     end_point = State()
+    intermediate_cities = State()
     forecast_days = State()
 
 
@@ -159,12 +160,12 @@ async def handle_message(message: types.Message):
             intermediate_cities = message.text.split(',')
             all_cities_on_route = [start_city] + [city.strip() for city in intermediate_cities if city.strip()] + [
                 end_city]
+        state['step'] = 'days'
+        await message.answer('Введите количество дней для прогноза (от 1 до 5):')
 
-        await message.answer(f'Получение данных о погоде для: {", ".join(all_cities_on_route)}...')
-        # Здесь можно добавить логику для получения и обработки данных о погоде для всех городов.
+    elif state['step'] == 'days':
+        days = message.text
 
-        # Очистка состояния пользователя
-        del user_states[user_id]
 
 
 # необработанные сообщения
