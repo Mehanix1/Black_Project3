@@ -3,7 +3,6 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 import logging
 import asyncio
 import requests
-from aiogram.fsm.state import State, StatesGroup
 import seaborn as sns
 import matplotlib.pyplot as plt
 from aiogram.types import FSInputFile
@@ -11,7 +10,7 @@ from aiogram.types import FSInputFile
 logging.basicConfig(level=logging.INFO)
 
 BOT_API_TOKEN = '7813841305:AAHtvM6nXRiVml2KuGnPYsJb4kJnbeWguGE'
-ACCUWEATHER_API_KEY = 'ndQ9sGBunRuXgqEcS7lOMAE1bY2AbIWj'
+ACCUWEATHER_API_KEY = 'lI8LcSSgDlBrGpfPyt7BFZz3jbwTduMN'
 GEOCODING_API_KEY = '48bb8cb44b814a34a2d4228089dd4369'
 
 bot = Bot(token=BOT_API_TOKEN)
@@ -19,17 +18,11 @@ dp = Dispatcher()
 
 user_states = {}
 
-
-class WeatherState(StatesGroup):
-    start_point = State()
-    end_point = State()
-    intermediate_cities = State()
-    forecast_days = State()
-
-
+# словарь для кэширования прогноза погоды для городов
 cached_city_weather_data = dict()
 
 
+# создание словаря с прогнозом погоды и городами
 def create_weather_dict(all_cities_on_route, days):
     cities_weather_data = {
         'city': [],
@@ -42,6 +35,7 @@ def create_weather_dict(all_cities_on_route, days):
     }
 
     for city in all_cities_on_route:
+        # проверяем, нужно ли делать запрос, или информация о погоде уже есть в кэше
         if city not in cached_city_weather_data.keys():
             try:
                 lat, lon = get_coordinates_by_city(city)
@@ -68,6 +62,7 @@ def create_weather_dict(all_cities_on_route, days):
     return cities_weather_data
 
 
+# функция для построения графика и отправки прогноза погоды
 async def send_forecast(cities_weather_data, message):
     for i in range(len(cities_weather_data['city'])):
         await bot.send_message(message.chat.id, f'''Погода для города {cities_weather_data["city"][i]}:
@@ -159,6 +154,7 @@ def get_5_day_forecast(lat, lon):
         return f'Ошибка: {e}'
 
 
+# получение прогноза погоды по конкретному дню
 def get_weather_by_day(weather_data, day):
     try:
         # ключевые параметры прогноза погоды
@@ -212,7 +208,7 @@ async def send_welcome(message: types.Message):
                          reply_markup=reply_keyboard)
 
 
-# обработка кнопки о боте
+# обработка кнопки "о боте"
 @dp.message(F.text == 'О боте')
 async def info(message: types.Message):
     await message.answer(
@@ -225,6 +221,7 @@ async def send_welcome(message: types.Message):
     await message.answer('Используйте команду /weather, чтобы узнать прогноз погоды')
 
 
+# обработки команды /weather и кнопки "Узнать прогноз погоды"
 @dp.message(F.text.in_(['/weather', 'Узнать прогноз погоды']))
 async def ask_start_city(message: types.Message):
     await message.answer('Введите начальный город:')
@@ -242,6 +239,7 @@ async def handle_message(message: types.Message):
     global state
     state = user_states[user_id]
 
+    # проверка состояния
     if state['step'] == 'start_city':
         start_city = message.text
         state['start_city'] = start_city
@@ -268,14 +266,14 @@ async def handle_message(message: types.Message):
         state['all_cities_on_route'] = all_cities_on_route
         state['step'] = 'days'  # Переход к вводу количества дней
 
-        # Создаём инлайн-кнопки
+        # создаём инлайн-кнопки
         button_1 = InlineKeyboardButton(text='1', callback_data='0')
         button_2 = InlineKeyboardButton(text='2', callback_data='1')
         button_3 = InlineKeyboardButton(text='3', callback_data='2')
         button_4 = InlineKeyboardButton(text='4', callback_data='3')
         button_5 = InlineKeyboardButton(text='5', callback_data='4')
 
-        # Создаём инлайн-клавиатуру
+        # создаём инлайн-клавиатуру
         inline_keyboard = InlineKeyboardMarkup(
             inline_keyboard=[[button_1], [button_2], [button_3], [button_4], [button_5]]
         )
@@ -299,6 +297,7 @@ async def handle_message(message: types.Message):
             await message.answer('Пожалуйста, введите корректное число.')
 
 
+# обраблотка колбэка инлайн-кнопок выбора количества дней
 @dp.callback_query()
 async def days_callback(callback: types.CallbackQuery):
     days = int(callback.data)
@@ -316,12 +315,11 @@ async def handle_unrecognized_message(message: types.Message):
     await message.answer('Извините, я не понял ваш запрос. Попробуйте использовать команды или кнопки.')
 
 
-# Запуск бота
+# запуск бота
 if __name__ == '__main__':
     async def main():
         # Подключаем бота и диспетчера
         await dp.start_polling(bot)
 
 
-    # Запускаем главный цикл
     asyncio.run(main())
