@@ -62,6 +62,41 @@ def create_weather_dict(all_cities_on_route, days):
     return cities_weather_data
 
 
+async def days_step(message):
+    if message.text.isdigit():
+        days = int(message.text)
+        if days < 1 or days > 5:
+            await message.answer('Пожалуйста, введите число от 1 до 5.')
+            return
+
+        all_cities_on_route = state['all_cities_on_route']
+        cities_weather_data = create_weather_dict(all_cities_on_route, days)
+        if isinstance(cities_weather_data, str):
+            await bot.send_message(message.chat.id, cities_weather_data)
+        elif isinstance(cities_weather_data, dict):
+            await send_forecast(cities_weather_data, message)
+
+
+async def intermediate_cities_step(message, all_cities_on_route):
+    state['step'] = 'days'
+    state['all_cities_on_route'] = all_cities_on_route
+    state['step'] = 'days'  # Переход к вводу количества дней
+
+    # создаём инлайн-кнопки
+    button_1 = InlineKeyboardButton(text='1', callback_data='0')
+    button_2 = InlineKeyboardButton(text='2', callback_data='1')
+    button_3 = InlineKeyboardButton(text='3', callback_data='2')
+    button_4 = InlineKeyboardButton(text='4', callback_data='3')
+    button_5 = InlineKeyboardButton(text='5', callback_data='4')
+
+    # создаём инлайн-клавиатуру
+    inline_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[button_1], [button_2], [button_3], [button_4], [button_5]]
+    )
+
+    await message.answer('Введите количество дней для прогноза (от 1 до 5):', reply_markup=inline_keyboard)
+
+
 # функция для построения графика и отправки прогноза погоды
 async def send_forecast(cities_weather_data, message):
     for i in range(len(cities_weather_data['city'])):
@@ -250,8 +285,15 @@ async def handle_message(message: types.Message):
         end_city = message.text
         state['end_city'] = end_city
         state['step'] = 'intermediate_cities'
+
+        done_button = InlineKeyboardButton(text='Готово', callback_data=('Готово'))
+        inline_keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[done_button]]
+        )
+
         await message.answer(
-            f'Вы ввели конечный город: {end_city}. Введите промежуточные города через запятую (или просто нажмите "Готово", если нет):')
+            f'Вы ввели конечный город: {end_city}. Введите промежуточные города через запятую (или просто нажмите "Готово", если нет):',
+            reply_markup=inline_keyboard)
 
     elif state['step'] == 'intermediate_cities':
         start_city = state.get('start_city')
@@ -262,51 +304,38 @@ async def handle_message(message: types.Message):
             intermediate_cities = message.text.split(',')
             all_cities_on_route = [start_city] + [city.strip() for city in intermediate_cities if city.strip()] + [
                 end_city]
-        state['step'] = 'days'
-        state['all_cities_on_route'] = all_cities_on_route
-        state['step'] = 'days'  # Переход к вводу количества дней
 
-        # создаём инлайн-кнопки
-        button_1 = InlineKeyboardButton(text='1', callback_data='0')
-        button_2 = InlineKeyboardButton(text='2', callback_data='1')
-        button_3 = InlineKeyboardButton(text='3', callback_data='2')
-        button_4 = InlineKeyboardButton(text='4', callback_data='3')
-        button_5 = InlineKeyboardButton(text='5', callback_data='4')
+        await intermediate_cities_step(message, all_cities_on_route)
 
-        # создаём инлайн-клавиатуру
-        inline_keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[[button_1], [button_2], [button_3], [button_4], [button_5]]
-        )
-
-        await message.answer('Введите количество дней для прогноза (от 1 до 5):', reply_markup=inline_keyboard)
     elif state['step'] == 'days':
         try:
-            days = int(message.text)
-            if days < 1 or days > 5:
-                await message.answer('Пожалуйста, введите число от 1 до 5.')
-                return
-
-            all_cities_on_route = state['all_cities_on_route']
-            cities_weather_data = create_weather_dict(all_cities_on_route, days)
-            if isinstance(cities_weather_data, str):
-                await bot.send_message(message.chat.id, cities_weather_data)
-            elif isinstance(cities_weather_data, dict):
-                await send_forecast(cities_weather_data, message)
+            await days_step(message)
 
         except ValueError:
             await message.answer('Пожалуйста, введите корректное число.')
 
 
-# обраблотка колбэка инлайн-кнопок выбора количества дней
+# обработка колбэка инлайн-кнопок
 @dp.callback_query()
 async def days_callback(callback: types.CallbackQuery):
-    days = int(callback.data)
-    all_cities_on_route = state['all_cities_on_route']
-    cities_weather_data = create_weather_dict(all_cities_on_route, days)
-    if isinstance(cities_weather_data, str):
-        await bot.send_message(callback.message.chat.id, cities_weather_data)
-    elif isinstance(cities_weather_data, dict):
-        await send_forecast(cities_weather_data, callback.message)
+    if callback.data == 'Готово':
+        start_city = state.get('start_city')
+        end_city = state.get('end_city')
+        all_cities_on_route = [start_city, end_city]
+        await intermediate_cities_step(callback.message, all_cities_on_route)
+        if state['step'] == 'days':
+            try:
+                await days_step(callback.message)
+            except ValueError:
+                await callback.message.answer('Пожалуйста, введите корректное число.')
+    elif callback.data.isdigit():
+        days = int(callback.data)
+        all_cities_on_route = state['all_cities_on_route']
+        cities_weather_data = create_weather_dict(all_cities_on_route, days)
+        if isinstance(cities_weather_data, str):
+            await bot.send_message(callback.message.chat.id, cities_weather_data)
+        elif isinstance(cities_weather_data, dict):
+            await send_forecast(cities_weather_data, callback.message)
 
 
 # необработанные сообщения
