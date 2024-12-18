@@ -4,7 +4,6 @@ import logging
 import asyncio
 import requests
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.context import FSMContext
 import seaborn as sns
 import matplotlib.pyplot as plt
 from aiogram.types import FSInputFile
@@ -44,7 +43,10 @@ def create_weather_dict(all_cities_on_route, days):
 
     for city in all_cities_on_route:
         if city not in cached_city_weather_data.keys():
-            lat, lon = get_coordinates_by_city(city)
+            try:
+                lat, lon = get_coordinates_by_city(city)
+            except ValueError:
+                return 'Ошибка. Введите корректные названия городов'
             weather_data = get_5_day_forecast(lat, lon)
             cached_city_weather_data[city] = weather_data, lat, lon
         else:
@@ -61,7 +63,7 @@ def create_weather_dict(all_cities_on_route, days):
             cities_weather_data['lon'].append(lon)
 
         else:
-            print(day_weather_data)  # TODO: переделать в отправку сообщения в бота
+            return 'Ошибка. Введите корректные названия городов'
 
     return cities_weather_data
 
@@ -220,7 +222,7 @@ async def info(message: types.Message):
 # Обработчик команды /help
 @dp.message(F.text == '/help')
 async def send_welcome(message: types.Message):
-    await message.answer('Используйте команду /weather, чтобы узнать прогноз погоды')  # TODO: описать команды
+    await message.answer('Используйте команду /weather, чтобы узнать прогноз погоды')
 
 
 @dp.message(F.text.in_(['/weather', 'Узнать прогноз погоды']))
@@ -280,12 +282,21 @@ async def handle_message(message: types.Message):
 
         await message.answer('Введите количество дней для прогноза (от 1 до 5):', reply_markup=inline_keyboard)
     elif state['step'] == 'days':
-        all_cities_on_route = state['all_cities_on_route']
-        days = int(message.text) - 1
-        print(all_cities_on_route, 'text')
-        cities_weather_data = create_weather_dict(all_cities_on_route, days)
+        try:
+            days = int(message.text)
+            if days < 1 or days > 5:
+                await message.answer('Пожалуйста, введите число от 1 до 5.')
+                return
 
-        await send_forecast(cities_weather_data, message)
+            all_cities_on_route = state['all_cities_on_route']
+            cities_weather_data = create_weather_dict(all_cities_on_route, days)
+            if isinstance(cities_weather_data, str):
+                await bot.send_message(message.chat.id, cities_weather_data)
+            elif isinstance(cities_weather_data, dict):
+                await send_forecast(cities_weather_data, message)
+
+        except ValueError:
+            await message.answer('Пожалуйста, введите корректное число.')
 
 
 @dp.callback_query()
@@ -293,7 +304,10 @@ async def days_callback(callback: types.CallbackQuery):
     days = int(callback.data)
     all_cities_on_route = state['all_cities_on_route']
     cities_weather_data = create_weather_dict(all_cities_on_route, days)
-    await send_forecast(cities_weather_data, callback.message)
+    if isinstance(cities_weather_data, str):
+        await bot.send_message(callback.message.chat.id, cities_weather_data)
+    elif isinstance(cities_weather_data, dict):
+        await send_forecast(cities_weather_data, callback.message)
 
 
 # необработанные сообщения
