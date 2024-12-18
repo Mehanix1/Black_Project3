@@ -5,6 +5,9 @@ import asyncio
 import requests
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
+import seaborn as sns
+import matplotlib.pyplot as plt
+from aiogram.types import FSInputFile
 
 logging.basicConfig(level=logging.INFO)
 
@@ -106,6 +109,7 @@ async def send_welcome(message: types.Message):
         keyboard=[[info_button], [weather_button]],
         resize_keyboard=True
     )
+
     await message.answer('Привет! Это бот, с помощью которого ты сможешь узнать погоду на всём маршруте',
                          reply_markup=reply_keyboard)
 
@@ -161,11 +165,93 @@ async def handle_message(message: types.Message):
             all_cities_on_route = [start_city] + [city.strip() for city in intermediate_cities if city.strip()] + [
                 end_city]
         state['step'] = 'days'
+        state['all_cities_on_route'] = all_cities_on_route
+        state['step'] = 'days'  # Переход к вводу количества дней
         await message.answer('Введите количество дней для прогноза (от 1 до 5):')
-
     elif state['step'] == 'days':
-        days = message.text
+        all_cities_on_route = state['all_cities_on_route']
+        days = int(message.text) - 1
+        cities_weather_data = {
+            'city': [],
+            'temperature': [],
+            'wind speed': [],
+            'relative humidity': [],
+            'precipitation probability': [],
+            'lat': [],
+            'lon': []
+        }
 
+        for city in all_cities_on_route:
+            if city not in cached_city_weather_data.keys():
+                lat, lon = get_coordinates_by_city(city)
+                weather_data = get_5_day_forecast(lat, lon)
+                cached_city_weather_data[city] = weather_data, lat, lon
+            else:
+                weather_data, lat, lon = cached_city_weather_data[city]
+            day_weather_data = get_weather_by_day(weather_data, days)
+            if isinstance(day_weather_data, tuple):
+                temperature, wind_speed, relative_humidity, precipitation_probability = day_weather_data[0:4]
+                cities_weather_data['city'].append(city)
+                cities_weather_data['temperature'].append(temperature)
+                cities_weather_data['wind speed'].append(wind_speed)
+                cities_weather_data['relative humidity'].append(relative_humidity)
+                cities_weather_data['precipitation probability'].append(precipitation_probability)
+                cities_weather_data['lat'].append(lat)
+                cities_weather_data['lon'].append(lon)
+
+            else:
+                print(day_weather_data)
+
+        plt.figure(figsize=(10, 6))
+        sns.lineplot(data=cities_weather_data, x='city', y='temperature', marker='o')
+        plt.title('Температура по городам')
+        plt.xlabel('Город')
+        plt.ylabel('Температура (°C)')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig('fig.png')
+        plt.close()
+        photo = FSInputFile("fig.png")
+        await bot.send_photo(chat_id=message.chat.id, photo=photo)
+
+        # График скорости ветра по городам
+        plt.figure(figsize=(10, 6))
+        sns.barplot(data=cities_weather_data, x='city', y='wind speed')
+        plt.title('Скорость ветра по городам')
+        plt.xlabel('Город')
+        plt.ylabel('Скорость ветра (м/с)')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig('fig.png')
+        plt.close()
+        photo = FSInputFile("fig.png")
+        await bot.send_photo(chat_id=message.chat.id, photo=photo)
+
+        # График относительной влажности по городам
+        plt.figure(figsize=(10, 6))
+        sns.barplot(data=cities_weather_data, x='city', y='relative humidity')
+        plt.title('Относительная влажность по городам')
+        plt.xlabel('Город')
+        plt.ylabel('Относительная влажность (%)')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig('fig.png')
+        plt.close()
+        photo = FSInputFile("fig.png")
+        await bot.send_photo(chat_id=message.chat.id, photo=photo)
+
+        # График вероятности осадков по городам
+        plt.figure(figsize=(10, 6))
+        sns.barplot(data=cities_weather_data, x='city', y='precipitation probability')
+        plt.title('Вероятность осадков')
+        plt.xlabel('Город')
+        plt.ylabel('Вероятность осадков (%)')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig('fig.png')
+        plt.close()
+        photo = FSInputFile("fig.png")
+        await bot.send_photo(chat_id=message.chat.id, photo=photo)
 
 
 # необработанные сообщения
